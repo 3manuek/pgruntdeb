@@ -1,0 +1,43 @@
+VERSION --allow-without-earthly-labels 0.8
+
+ARG --global MAX_JOBS=${MAX_JOBS:-4}
+ARG --global PG_SRC
+ARG --global PREFIX
+
+
+COMPILE:
+    FUNCTION
+    ARG TARGETARG
+
+    IF [ "${TARGETARCH}" = "amd64" ]
+      ENV CFLAGS_ARG='${CFLAGS:--Wall -Wmissing-prototypes -Wpointer-arith -Wdeclaration-after-statement -Wendif-labels -Wmissing-format-attribute -Wformat-security -fno-strict-aliasing -fwrapv -fexcess-precision=standard -O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector-strong --param=ssp-buffer-size=4 -grecord-gcc-switches -m64 -mtune=generic}' 
+
+    ELSE IF [ "${TARGETARCH}" = "arm64" ]
+      ENV CFLAGS_ARG="-ggdb " 
+      ENV CONFIGURE_FLAGS=' --build=arm-linux-gnueabihf '
+    END
+
+    RUN ./configure CFLAGS="${CFLAGS_ARG}" \
+            --enable-debug \
+            --enable-cassert \
+            --with-ldap \
+            --with-libxml \
+            --with-pam \
+            --with-uuid=ossp \
+            --enable-nls \
+            --with-libxslt \
+            # --enable-tap-tests \
+            --with-icu "${CONFIGURE_FLAGS}"
+    
+
+    RUN make clean && make prefix=${PREFIX} -j ${MAX_JOBS} world-bin && make prefix=${PREFIX} install
+    WORKDIR ./contrib
+    RUN make 
+    RUN make prefix=${PREFIX} install
+    WORKDIR ${PG_SRC}
+    # RUN true
+
+INSTALLCHECK:
+    FUNCTION
+
+    RUN make  destdir="${PREFIX}/tmp_install" EXTRA_REGRESS_OPTS=--debug -j ${MAX_JOBS} check

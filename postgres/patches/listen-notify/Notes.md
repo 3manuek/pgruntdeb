@@ -1,0 +1,2 @@
+- `UNLISTEN >;` and `UNLISTEN %;` do not free the listening channel. UNLISTEN * does still work.
+- 

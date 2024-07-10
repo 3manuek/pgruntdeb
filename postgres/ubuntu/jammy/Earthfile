@@ -1,0 +1,30 @@
+VERSION --allow-without-earthly-labels 0.8
+
+INSTALL_DEPS:
+    FUNCTION
+    RUN set -ex; \
+        apt update
+
+    RUN set -ex ; \
+        DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
+        build-essential flex libxml2-dev libxml2-utils libc6-dev \
+        libxslt-dev \
+        libreadline-dev zlib1g-dev libldap2-dev libpam0g-dev gettext  \
+        uuid uuid-dev cmake lld apt-utils pkg-config libossp-uuid-dev gnulib bison git
+
+    ## XXX implement IF jammy for the below statements, support focal would be 
+    ## changing libicu66 and python-dev
+    RUN set -ex ; \
+        DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
+        xsltproc icu-devtools libicu70 libicu-dev gawk curl
+
+    RUN set -ex ; \
+        DEBIAN_FRONTEND=noninteractive \
+        apt install -y openjdk-8-jre openssl \
+            libssl-dev libpq-dev \
+            pkgconf unzip libutfcpp-dev gnupg \
+            python-dev-is-python3
+
+    RUN rm -rf /var/lib/apt/lists/*; \
+        apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false;
+    

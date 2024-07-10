@@ -1,0 +1,81 @@
+VERSION --allow-without-earthly-labels 0.8
+
+## ---------------------------------------------
+## We want Earthly to be as reproducible as possible,
+## so we'll pass every argument at build.
+## All those would be in the .arg file
+ARG --global  BUSYBOX_TAG='latest'
+FROM busybox:${BUSYBOX_TAG} ## BUSYBOX_VERSION
+
+ARG --global  BASE_IMAGE='ubuntu'
+ARG --global  BASE_TAG='jammy'
+
+ARG --global PATCH='listen-notify' # Will apply everything in the order that the list is returned
+# ARG --global POSTGRES_BRANCH='REL_17_STABLE'
+ARG --global POSTGRES_BRANCH='master'
+ARG --global PG_REPOSITORY='https://github.com/postgres/postgres.git'
+ARG --global PG_SRC='/src/postgres'
+ARG --global PREFIX='/usr/local/postgres'
+
+
+build-all:
+    BUILD +build-w-patch
+    BUILD +build-vanilla
+
+dependencies:
+    FROM ${BASE_IMAGE}:${BASE_TAG}
+    DO ./${BASE_IMAGE}/${BASE_TAG}+INSTALL_DEPS
+
+    SAVE IMAGE --cache-hint
+
+clone:
+    FROM +dependencies
+    
+    GIT CLONE --branch ${POSTGRES_BRANCH} ${PG_REPOSITORY} ${PG_SRC}
+
+    WORKDIR ${PG_SRC}
+    SAVE IMAGE --cache-hint  
+
+build-w-patch:
+    FROM +clone
+
+    ## missing locale set, todo
+    # ENV LANG en_US.utf8
+    # ENV LC_ALL en_US.utf8
+    # ENV LC_CTYPE en_US.utf8
+    ENV PATH="${PATH}:${PREFIX}/bin"
+    ENV PGDATA="/var/lib/postgresql/data"
+    ENV SHELL="/bin/sh"
+    COPY ./patches/${PATCH}/*.patch ./
+
+    FOR patch IN $(ls *.patch)
+        RUN patch -p1 < "${patch}"
+    END
+
+    DO --pass-args ./_lib+COMPILE
+
+    RUN useradd postgres  && usermod -a -G postgres postgres
+    RUN chown -R postgres: ${PREFIX}
+    RUN chown -R postgres: ${PG_SRC}
+    RUN mkdir -p /var/run/postgresql && chown -R postgres:postgres /var/run/postgresql && chmod 3777 /var/run/postgresql
+    RUN mkdir /docker-entrypoint-initdb.d
+    RUN chown -R postgres:postgres /docker-entrypoint-initdb.d
+    USER postgres
+
+    DO --pass-args ./_lib+INSTALLCHECK
+
+    COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+    VOLUME ["/var/lib/postgresql/data"]
+  
+    ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+    EXPOSE 5432
+    CMD ["postgres"]
+
+    SAVE IMAGE --without-earthly-labels postgres-${PATCH}:1
+
+# build-vanilla WIP
+build-vanilla:
+    FROM +clone
+    USER postgres
+    DO --pass-args ./_lib+COMPILE
+    # DO --pass-args ./${BASE_IMAGE}/${BASE_TAG}+INSTALLCHECK
